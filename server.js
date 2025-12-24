@@ -129,4 +129,8 @@ io.on("connection", (socket) => {
   });
 });
 
+app.get("/ping", (req, res) => {
+  res.status(200).send("pong");
+});
+
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
