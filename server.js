@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const Notification = require('./models/Notification');
 
 // 1. Configuration & Database
-dotenv.config();
+// dotenv.config();
 connectDB();
 
 const app = express();
