@@ -82,8 +82,8 @@ router.post("/signup", async (req, res) => {
     const { username, email, password } = req.body;
 
     // A. Validation
-    if (!password || password.length < 4) {
-      return res.status(400).json({ error: "Password must be at least 4 characters." });
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
     // B. Check existence (Username OR Email)
@@ -214,8 +214,8 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // 2. Validate New Password length
-    if (newPassword.length < 4) {
-      return res.status(400).json({ error: "Password must be 4+ chars" });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "Password must be 8+ chars" });
     }
 
     // 3. Hash New Password

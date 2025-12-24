@@ -19,7 +19,7 @@ export default function SignupPage() {
 
   // Validation
   const validateUsername = (u) => /^(?=.*\d)[A-Za-z\d]{4,}$/.test(u);
-  const validatePassword = (p) => p.length >= 4;
+  const validatePassword = (p) => p.length >= 8;
   const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -41,7 +41,7 @@ export default function SignupPage() {
       return;
     }
     if (!validatePassword(form.password)) {
-      showAlert("error", "Password must be at least 4 characters.");
+      showAlert("error", "Password must be at least 8 characters.");
       setLoading(false);
       return;
     }

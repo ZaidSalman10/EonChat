@@ -25,7 +25,8 @@ const userSchema = new mongoose.Schema({
   // CHANGED: 'password' -> 'passwordHash' to match your auth.js logic
   passwordHash: {
     type: String,
-    required: true
+    required: true,
+    minlength: [8, "Password must be at least 8 characters"]
   },
   // ADDED: Friends Graph (Adjacency List) - Crucial for your DSA project
   friends: [{
