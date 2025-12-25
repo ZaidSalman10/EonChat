@@ -12,11 +12,25 @@ connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+const CLIENT_URL = process.env.CLIENT_URL;
 
 // 2. Middleware
 app.use(express.json());
-app.use(cors({ origin: CLIENT_URL, credentials: true }));
+const allowedOrigins = [
+  "https://eonchat.vercel.app"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS not allowed"));
+    }
+  },
+  credentials: true
+}));
+
 
 // 3. API Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -26,11 +40,17 @@ app.use('/api/requests', require('./routes/requests'));
 app.use('/api/notifications', require('./routes/notifications'));
 
 
-// 4. Create Server
-const server = http.createServer(app); 
+// 4a. Create HTTP server 
+const server = http.createServer(app);
+
+// 4b. Create Socket.io server
 const io = new Server(server, {
   pingTimeout: 60000,
-  cors: { origin: CLIENT_URL, methods: ["GET", "POST"] }
+  cors: {
+    origin: ["https://eonchat.vercel.app"],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
 });
 
 // 5. Socket Logic (Extreme Accuracy Mode)
