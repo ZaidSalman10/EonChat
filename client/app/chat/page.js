@@ -1,7 +1,7 @@
 // 1. app/chat/page.js 
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL } from '@/utils/api'; 
 import { getSafeId, RequestStack, NotificationStack } from './utils/chatHelpers';
@@ -14,7 +14,6 @@ import EonBot from './components/EonBot';
 export default function ChatPage() {
   const router = useRouter();
   
-  // --- State ---
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [activeChat, setActiveChat] = useState(null); 
@@ -30,24 +29,11 @@ export default function ChatPage() {
   const [userSearchTerm, setUserSearchTerm] = useState(""); 
   const [userSearchResults, setUserSearchResults] = useState([]); 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isMessagesLoading, setIsMessagesLoading] = useState(false); // New: Smooth Transition
   const [searchQuery, setSearchQuery] = useState(""); 
   const [isSearchingChat, setIsSearchingChat] = useState(false);
   
-  // --- Refs ---
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
-
-  // --- Helpers ---
-  
-  // 1. Safe State Updater (Prevents Duplicates & Data Loss)
-  const safelyAddMessage = useCallback((newMessage) => {
-    setMessages((prev) => {
-      // If message ID already exists, do not add it again (Fixes Redundancy)
-      if (prev.some(m => m._id === newMessage._id)) return prev;
-      return [...prev, newMessage];
-    });
-  }, []);
 
   const buildGraphRecommendations = async () => {
     if (!token || !user) return;
@@ -69,7 +55,6 @@ export default function ChatPage() {
     } catch (err) { console.error("Graph Traversal Failed", err); }
   };
 
-  // --- Initial Setup ---
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
@@ -81,15 +66,12 @@ export default function ChatPage() {
     }
   }, [router]);
 
-  // Keep ref synced for Socket Hook
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
 
-  // --- Socket Hook ---
-  // Note: We pass safelyAddMessage to ensure incoming socket messages are deduplicated
   const socketRef = useChatSocket(
     user, 
     activeChatRef, 
-    safelyAddMessage, // Updated: Pass the safe setter
+    setMessages, 
     setRequestStack, 
     setFriends, 
     setActiveChat, 
@@ -97,7 +79,6 @@ export default function ChatPage() {
     buildGraphRecommendations 
   );
 
-  // --- Data Fetching ---
   const fetchFriends = async () => {
     try {
       const res = await fetch(`${API_URL}/api/users/friends`, { headers: { "x-auth-token": token } });
@@ -123,23 +104,13 @@ export default function ChatPage() {
   };
 
   const fetchMessages = async (chatId) => {
-    setIsMessagesLoading(true); // Start loading
     try {
       const res = await fetch(`${API_URL}/api/messages/${chatId}`, { headers: { "x-auth-token": token } });
       const data = await res.json();
-      
-      // Fix Race Condition: Only update if user is STILL on this chat
-      if (activeChatRef.current && getSafeId(activeChatRef.current) === chatId) {
-         setMessages(Array.isArray(data) ? data : []);
-      }
-    } catch (err) { 
-        if (activeChatRef.current && getSafeId(activeChatRef.current) === chatId) setMessages([]); 
-    } finally {
-        setIsMessagesLoading(false); // Stop loading
-    }
+      setMessages(Array.isArray(data) ? data : []);
+    } catch (err) { setMessages([]); }
   };
 
-  // --- Effects ---
   useEffect(() => {
     if (token) {
         fetchFriends();
@@ -162,44 +133,29 @@ export default function ChatPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isMessagesLoading]); // Scroll when loading finishes too
-
-  // --- Handlers ---
+  }, [messages]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    
-    // Optimistic UI: Don't wait for server to clear input, makes it feel faster
-    const content = inputText;
-    setInputText(""); 
-
     const receiverId = getSafeId(activeChat);
     try {
       const res = await fetch(`${API_URL}/api/messages/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-auth-token": token },
-        body: JSON.stringify({ receiverId, content })
+        body: JSON.stringify({ receiverId, content: inputText })
       });
       const data = await res.json();
-      
       if (res.status === 403 && data.isUnfriended) {
         alert(data.msg);
         setFriends(prev => prev.filter(f => getSafeId(f) !== receiverId));
         setActiveChat(null);
         return;
       }
-
-      // Socket Emit
       if (socketRef.current) socketRef.current.emit("new_message", data);
-      
-      // Safe Update: Use function to access latest state and prevent overwrite
-      safelyAddMessage(data);
-
-    } catch (err) { 
-        console.error("Send Error", err); 
-        setInputText(content); // Revert text if failed
-    }
+      setMessages([...messages, data]);
+      setInputText("");
+    } catch (err) { console.error("Send Error", err); }
   };
 
   const handleUserSearch = async (term) => {
@@ -320,11 +276,6 @@ export default function ChatPage() {
         handleClearNotifications={handleClearNotifications}
         activeChat={activeChat} setActiveChat={setActiveChat} isProcessing={isProcessing}
       />
-      
-      {/* 
-         We pass isMessagesLoading to ChatWindow if you want to show a spinner there.
-         If ChatWindow doesn't accept it, it will just ignore the prop.
-      */}
       <ChatWindow 
         user={user} activeChat={activeChat} setActiveChat={setActiveChat}
         messages={messages} inputText={inputText} setInputText={setInputText}
