@@ -4,65 +4,74 @@ const Otp = require('../models/Otp'); // Import the OTP model
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
-const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
 require('dotenv').config();
 
-// --- 1. Email Transporter Setup (Nodemailer) ---
+// 🚀 1. BREVO SMTP TRANSPORTER (NO DOMAIN REQUIRED)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.SMTP_HOST,        // smtp-relay.brevo.com
+  port: process.env.SMTP_PORT,        // 587
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    user: process.env.SMTP_USER,      // 9ebf14001@smtp-brevo.com
+    pass: process.env.SMTP_PASS
   },
-  connectionTimeout: 10000, // 10 seconds
+  connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000
 });
 
+// 🔎 Verify transporter at startup (IMPORTANT)
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ SMTP ERROR:", error);
+  } else {
+    console.log("✅ SMTP READY");
+  }
+});
 
-// --- 2. Route: Send OTP ---
+// 📩 2. SEND OTP ROUTE
 router.post('/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
-    // Check if email is already taken
+    // A. Check existing user
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already linked to an account" });
     }
 
-    // Generate OTP
+    // B. Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Save OTP
+    // C. Remove old OTPs
     await Otp.deleteMany({ email });
+
+    // D. Save OTP
     await new Otp({ email, otp }).save();
 
-    // Send email via Resend
-    const { data, error } = await resend.emails.send({
-      from: "EonChat Security <onboarding@resend.dev>",
+    // E. Send Email
+    console.log("📧 Sending OTP...");
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM, // ✅ REQUIRED
       to: email,
       subject: "Your EonChat Verification Code",
       html: `
         <h3>Welcome to EonChat!</h3>
         <p>Your verification code is:</p>
-        <h1 style="letter-spacing: 5px; color: #208c8c;">${otp}</h1>
+        <h1 style="letter-spacing:5px;color:#208c8c">${otp}</h1>
         <p>This code expires in 5 minutes.</p>
-      `,
+      `
     });
 
-    if (error) {
-      console.error("Resend email error:", error);
-      return res.status(500).json({ error: "Failed to send email" });
-    }
+    console.log("✅ OTP SENT");
 
-    res.json({ message: "OTP sent successfully", id: data.id });
+    res.json({ message: "OTP sent successfully" });
 
   } catch (err) {
-    console.error("Send OTP error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ EMAIL ERROR:", err);
+    res.status(500).json({ error: "Failed to send OTP" });
   }
 });
 
