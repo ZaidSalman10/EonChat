@@ -201,16 +201,21 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send Email
     await transporter.sendMail({
-      from: '"EonChat Security" <no-reply@eonchat.com>',
-      to: email,
-      subject: 'Reset Your Password',
-      html: `
+    from: process.env.SMTP_FROM, // ✅ verified sender
+    to: email,
+    subject: 'Reset Your Password',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px;">
         <h3>Password Reset Request</h3>
-        <p>Use this code to reset your password:</p>
-        <h1 style="color: #e63946;">${otp}</h1>
-        <p>If you didn't request this, ignore this email.</p>
-      `
-    });
+        <p>Use the following code to reset your password:</p>
+        <h1 style="color: #e63946; letter-spacing: 4px;">${otp}</h1>
+        <p>This code will expire in <b>5 minutes</b>.</p>
+        <p>If you did not request this, you can safely ignore this email.</p>
+        <hr />
+        <p style="font-size: 12px; color: #666;">EonChat Security</p>
+      </div>
+    `});
+
 
     res.json({ message: "OTP sent to email" });
 
