@@ -10,10 +10,14 @@ require('dotenv').config();
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Set these in your .env file
+    user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000
 });
+
 
 // --- 2. Route: Send OTP ---
 router.post('/send-otp', async (req, res) => {
@@ -37,7 +41,10 @@ router.post('/send-otp', async (req, res) => {
     await new Otp({ email, otp }).save();
 
     // Send Email
-    await transporter.sendMail({
+    console.log("Email Sending...");
+
+    // Send Email asynchronously without blocking the response
+    transporter.sendMail({
       from: '"EonChat Security" <no-reply@eonchat.com>',
       to: email,
       subject: 'Your EonChat Verification Code',
@@ -47,7 +54,15 @@ router.post('/send-otp', async (req, res) => {
         <h1 style="letter-spacing: 5px; color: #208c8c;">${otp}</h1>
         <p>This code expires in 5 minutes.</p>
       `
+    })
+    .then(() => {
+      console.log(`✅ OTP email sent to ${email}`);
+    })
+    .catch(err => {
+      console.error(`⚠️ Failed to send OTP email to ${email}:`, err);
     });
+
+    console.log("Email Dispatched...")
 
     res.json({ message: "OTP sent successfully" });
 
