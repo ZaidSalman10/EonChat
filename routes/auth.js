@@ -1,30 +1,45 @@
 const router = require('express').Router();
 const User = require('../models/User');
-const Otp = require('../models/Otp'); // Import the OTP model
+const Otp = require('../models/Otp');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 require('dotenv').config();
 
-// 🚀 1. BREVO SMTP TRANSPORTER (NO DOMAIN REQUIRED)
-const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 2525,                // Railway-friendly port
-  secure: false,             // STARTTLS (do not set true on 2525)
-  auth: {
-    user: process.env.BREVO_SMTP_USER,  // e.g., your Brevo SMTP login
-    pass: process.env.BREVO_SMTP_PASS   // e.g., your Brevo SMTP password
-  },
-  tls: {
-    rejectUnauthorized: false,           // Allow self-signed certs if needed
-    ciphers: "SSLv3"
-  },
-  connectionTimeout: 30000,  // 30 seconds
-  greetingTimeout: 30000,    // 30 seconds
-  socketTimeout: 30000       // 30 seconds
-});
+// 🚀 EMAIL HELPER - Using Brevo API (Railway Compatible)
+async function sendEmail(to, subject, htmlContent) {
+  try {
+    console.log(`📧 Sending email to ${to}...`);
+    
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        sender: { 
+          email: process.env.SMTP_FROM, 
+          name: "EonChat" 
+        },
+        to: [{ email: to }],
+        subject: subject,
+        htmlContent: htmlContent
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 seconds
+      }
+    );
+    
+    console.log('✅ Email sent successfully');
+    return response.data;
+  } catch (error) {
+    console.error('❌ Brevo API Error:', error.response?.data || error.message);
+    throw new Error('Failed to send email');
+  }
+}
 
-// 📩 2. SEND OTP ROUTE
+// 📩 1. SEND OTP ROUTE
 router.post('/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
@@ -45,22 +60,17 @@ router.post('/send-otp', async (req, res) => {
     // D. Save OTP
     await new Otp({ email, otp }).save();
 
-    // E. Send Email
-    console.log("📧 Sending OTP...");
-
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM, // ✅ REQUIRED
-      to: email,
-      subject: "Your EonChat Verification Code",
-      html: `
+    // E. Send Email via Brevo API
+    await sendEmail(
+      email,
+      "Your EonChat Verification Code",
+      `
         <h3>Welcome to EonChat!</h3>
         <p>Your verification code is:</p>
         <h1 style="letter-spacing:5px;color:#208c8c">${otp}</h1>
         <p>This code expires in 5 minutes.</p>
       `
-    });
-
-    console.log("✅ OTP SENT");
+    );
 
     res.json({ message: "OTP sent successfully" });
 
@@ -70,7 +80,7 @@ router.post('/send-otp', async (req, res) => {
   }
 });
 
-// --- 3. Route: Verify OTP ---
+// 2. VERIFY OTP ROUTE
 router.post('/verify-otp', async (req, res) => {
   const { email, otp } = req.body;
 
@@ -89,7 +99,7 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
-// --- 4. Route: Signup (Final Registration) ---
+// 3. SIGNUP ROUTE (Final Registration)
 router.post("/signup", async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -100,7 +110,6 @@ router.post("/signup", async (req, res) => {
     }
 
     // B. Check existence (Username OR Email)
-    // We check again to ensure no one claimed the username while the user was verifying OTP
     let query = { $or: [{ username }] };
     if (email) query.$or.push({ email });
 
@@ -117,13 +126,13 @@ router.post("/signup", async (req, res) => {
     // D. Create User
     const user = new User({
       username,
-      email: email || undefined, // Store as undefined if empty (for Sparse Index)
+      email: email || undefined,
       passwordHash: hashedPassword
     });
 
     await user.save();
 
-    // E. Cleanup: If email was used, delete the used OTP to keep DB clean
+    // E. Cleanup: Delete used OTP
     if (email) {
       await Otp.deleteMany({ email });
     }
@@ -134,7 +143,6 @@ router.post("/signup", async (req, res) => {
     });
 
   } catch (err) {
-    // Handle Mongoose Validation Errors (like the regex for username)
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map(val => val.message);
       return res.status(400).json({ error: messages[0] });
@@ -144,7 +152,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// --- 5. Route: Login ---
+// 4. LOGIN ROUTE
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -176,12 +184,12 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// --- 6. Route: Forgot Password (Initiate) ---
+// 5. FORGOT PASSWORD ROUTE (Initiate)
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
 
   try {
-    // DSA Search: Find user by email
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ error: "No account found with this email" });
@@ -190,27 +198,26 @@ router.post('/forgot-password', async (req, res) => {
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Save to OTP Collection (Overwrite existing if any)
+    // Save to OTP Collection
     await Otp.deleteMany({ email });
     await new Otp({ email, otp }).save();
 
-    // Send Email
-    await transporter.sendMail({
-    from: process.env.SMTP_FROM, // ✅ verified sender
-    to: email,
-    subject: 'Reset Your Password',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 500px;">
-        <h3>Password Reset Request</h3>
-        <p>Use the following code to reset your password:</p>
-        <h1 style="color: #e63946; letter-spacing: 4px;">${otp}</h1>
-        <p>This code will expire in <b>5 minutes</b>.</p>
-        <p>If you did not request this, you can safely ignore this email.</p>
-        <hr />
-        <p style="font-size: 12px; color: #666;">EonChat Security</p>
-      </div>
-    `});
-
+    // Send Email via Brevo API
+    await sendEmail(
+      email,
+      'Reset Your Password',
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 500px;">
+          <h3>Password Reset Request</h3>
+          <p>Use the following code to reset your password:</p>
+          <h1 style="color: #e63946; letter-spacing: 4px;">${otp}</h1>
+          <p>This code will expire in <b>5 minutes</b>.</p>
+          <p>If you did not request this, you can safely ignore this email.</p>
+          <hr />
+          <p style="font-size: 12px; color: #666;">EonChat Security</p>
+        </div>
+      `
+    );
 
     res.json({ message: "OTP sent to email" });
 
@@ -220,7 +227,7 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-// --- 7. Route: Reset Password (Finalize) ---
+// 6. RESET PASSWORD ROUTE (Finalize)
 router.post('/reset-password', async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
@@ -240,7 +247,7 @@ router.post('/reset-password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // 4. Update User (DSA: Direct access update)
+    // 4. Update User
     await User.findOneAndUpdate(
       { email }, 
       { passwordHash: hashedPassword }
