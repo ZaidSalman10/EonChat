@@ -36,7 +36,7 @@ export default function SignupPage() {
     setLoading(true);
 
     if (!validateUsername(form.username)) {
-      showAlert("error", "Username must be 4+ chars, alphanumeric, with a number.");
+      showAlert("error", "Username must be 4+ chars, with a number (cannot add spaces or special characters).");
       setLoading(false);
       return;
     }

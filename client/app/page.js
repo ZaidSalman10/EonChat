@@ -61,13 +61,6 @@ export default function Home() {
             >
               Start Chatting Now <ArrowRight size={20} />
             </Link>
-            <Link 
-              href="https://github.com" 
-              target="_blank"
-              className="flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-[#1d1d1d] hover:bg-[#2a2a2a] border border-[#333] hover:border-white/20 text-white text-lg transition"
-            >
-              <Github size={20} /> View Project Code
-            </Link>
           </div>
         </div>
       </main>
