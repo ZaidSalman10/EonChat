@@ -42,7 +42,7 @@ router.post('/send-otp', async (req, res) => {
 
     // Send email via Resend
     const { data, error } = await resend.emails.send({
-      from: "EonChat <m.zaidslmaan@gmail.com>",
+      from: "EonChat Security <onboarding@resend.dev>",
       to: email,
       subject: "Your EonChat Verification Code",
       html: `
