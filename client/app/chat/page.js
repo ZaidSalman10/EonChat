@@ -30,7 +30,7 @@ export default function ChatPage() {
   const [userSearchTerm, setUserSearchTerm] = useState(""); 
   const [userSearchResults, setUserSearchResults] = useState([]); 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isMessagesLoading, setIsMessagesLoading] = useState(false); // New: Smooth Transition
+  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(""); 
   const [isSearchingChat, setIsSearchingChat] = useState(false);
   
@@ -40,10 +40,10 @@ export default function ChatPage() {
 
   // --- Helpers ---
   
-  // 1. Safe State Updater (Prevents Duplicates & Data Loss)
+  // Safe State Updater (Prevents Duplicates)
   const safelyAddMessage = useCallback((newMessage) => {
     setMessages((prev) => {
-      // If message ID already exists, do not add it again (Fixes Redundancy)
+      // Check if message ID already exists to prevent duplication
       if (prev.some(m => m._id === newMessage._id)) return prev;
       return [...prev, newMessage];
     });
@@ -81,15 +81,13 @@ export default function ChatPage() {
     }
   }, [router]);
 
-  // Keep ref synced for Socket Hook
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
 
   // --- Socket Hook ---
-  // Note: We pass safelyAddMessage to ensure incoming socket messages are deduplicated
   const socketRef = useChatSocket(
     user, 
     activeChatRef, 
-    safelyAddMessage, // Updated: Pass the safe setter
+    safelyAddMessage, 
     setRequestStack, 
     setFriends, 
     setActiveChat, 
@@ -123,23 +121,20 @@ export default function ChatPage() {
   };
 
   const fetchMessages = async (chatId) => {
-    setIsMessagesLoading(true); // Start loading
+    setIsMessagesLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/messages/${chatId}`, { headers: { "x-auth-token": token } });
       const data = await res.json();
-      
-      // Fix Race Condition: Only update if user is STILL on this chat
       if (activeChatRef.current && getSafeId(activeChatRef.current) === chatId) {
          setMessages(Array.isArray(data) ? data : []);
       }
     } catch (err) { 
         if (activeChatRef.current && getSafeId(activeChatRef.current) === chatId) setMessages([]); 
     } finally {
-        setIsMessagesLoading(false); // Stop loading
+        setIsMessagesLoading(false);
     }
   };
 
-  // --- Effects ---
   useEffect(() => {
     if (token) {
         fetchFriends();
@@ -160,47 +155,72 @@ export default function ChatPage() {
     }
   }, [activeChat, token]);
 
+  // Auto-scroll logic
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isMessagesLoading]); // Scroll when loading finishes too
+  }, [messages, isMessagesLoading]);
 
-  // --- Handlers ---
-
+  // --- 🔥 OPTIMIZED SEND HANDLER (INSTANT) ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    
-    // Optimistic UI: Don't wait for server to clear input, makes it feel faster
-    const content = inputText;
-    setInputText(""); 
 
+    const content = inputText;
     const receiverId = getSafeId(activeChat);
+    const tempId = `temp-${Date.now()}`; // Temporary ID for instant UI
+
+    // 1. Construct Optimistic Message
+    const optimisticMsg = {
+        _id: tempId,
+        content: content,
+        sender: user, // Show current user as sender
+        receiver: activeChat,
+        createdAt: new Date().toISOString(),
+        status: "sending" // Optional: You can style this (e.g., grey checkmark)
+    };
+
+    // 2. Update UI INSTANTLY (Zero Lag)
+    setInputText(""); // Clear input immediately
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     try {
+      // 3. Perform Background Network Request
       const res = await fetch(`${API_URL}/api/messages/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-auth-token": token },
         body: JSON.stringify({ receiverId, content })
       });
       const data = await res.json();
-      
+
+      // Handle Blocked/Unfriended Case
       if (res.status === 403 && data.isUnfriended) {
         alert(data.msg);
         setFriends(prev => prev.filter(f => getSafeId(f) !== receiverId));
         setActiveChat(null);
+        // Remove the optimistic message since it failed
+        setMessages(prev => prev.filter(m => m._id !== tempId));
         return;
       }
 
-      // Socket Emit
+      // 4. Success: Swap Temporary ID with Real Database Message
+      // This prevents "jumpiness" and ensures the message is now permanent
+      setMessages((prev) => 
+        prev.map(msg => (msg._id === tempId ? data : msg))
+      );
+
+      // 5. Emit to Socket (For the receiver)
       if (socketRef.current) socketRef.current.emit("new_message", data);
-      
-      // Safe Update: Use function to access latest state and prevent overwrite
-      safelyAddMessage(data);
 
     } catch (err) { 
         console.error("Send Error", err); 
-        setInputText(content); // Revert text if failed
+        // 6. Rollback on Error
+        setMessages(prev => prev.filter(m => m._id !== tempId)); // Remove failed message
+        setInputText(content); // Restore text to input so user can try again
+        alert("Failed to send message. Please check your connection.");
     }
   };
+
+  // --- Search & Request Handlers ---
 
   const handleUserSearch = async (term) => {
     setUserSearchTerm(term);
@@ -320,11 +340,6 @@ export default function ChatPage() {
         handleClearNotifications={handleClearNotifications}
         activeChat={activeChat} setActiveChat={setActiveChat} isProcessing={isProcessing}
       />
-      
-      {/* 
-         We pass isMessagesLoading to ChatWindow if you want to show a spinner there.
-         If ChatWindow doesn't accept it, it will just ignore the prop.
-      */}
       <ChatWindow 
         user={user} activeChat={activeChat} setActiveChat={setActiveChat}
         messages={messages} inputText={inputText} setInputText={setInputText}
