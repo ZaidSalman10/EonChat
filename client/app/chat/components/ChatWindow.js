@@ -1,4 +1,3 @@
-
 // 4. app/chat/components/ChatWindow.jsx 
 
 "use client";
@@ -30,6 +29,15 @@ export default function ChatWindow({
   setIsSearchingChat 
 }) {
   const [report, setReport] = useState(null);
+
+  // --- Helper: Robust Date Formatter ---
+  // Fixes "Invalid Date" by checking multiple property names and handling errors
+  const formatTime = (dateInput) => {
+    if (!dateInput) return "Just now";
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return "Just now"; // Handle malformed dates
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   if (!activeChat) {
     return (
@@ -130,13 +138,18 @@ export default function ChatWindow({
             
             {filteredMessages.map((msg, index) => {
                 const isMe = getSafeId(msg.sender) === getSafeId(user);
+                
+                // 🔥 CRITICAL FIX: Safe Time Selection
+                // DB uses 'createdAt', Optimistic UI uses 'timestamp'. We check both.
+                const msgTime = msg.createdAt || msg.timestamp || new Date().toISOString();
+
                 return (
                     <div key={msg._id || `msg-${index}`} className={`flex ${isMe ? "justify-end" : "justify-start"} animate-fade-in-up relative z-10`}>
                         <div className={`flex items-end gap-1.5 sm:gap-2 max-w-[90%] sm:max-w-[85%] lg:max-w-[70%] ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                             <div className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl text-xs sm:text-sm shadow-md break-words leading-relaxed ${isMe ? "bg-[#208c8c] text-black rounded-br-none" : "bg-[#1d2d2d] text-white border border-[#333] rounded-bl-none"}`}>
                                 {searchQuery ? <HighlightText text={msg.content} highlight={searchQuery} /> : msg.content}
                                 <div className={`text-[8px] sm:text-[9px] mt-1 sm:mt-1.5 text-right font-bold tracking-tighter ${isMe ? "text-black/50" : "text-gray-500"}`}>
-                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatTime(msgTime)}
                                 </div>
                             </div>
                         </div>
@@ -217,5 +230,3 @@ export default function ChatWindow({
     </main>
   );
 }
-
-
