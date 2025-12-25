@@ -57,6 +57,7 @@ const io = new Server(server, {
 // Helper: Safely extract string ID to prevent data misalignment
 const getSafeId = (userObj) => {
     if (!userObj) return null;
+    // Handle cases where userObj might be an object with _id or just an ID string
     return (userObj._id || userObj.id || userObj).toString();
 };
 
@@ -70,8 +71,7 @@ io.on("connection", (socket) => {
         const userId = getSafeId(userData);
         if (userId) {
             socket.join(userId);
-            // Optimization: Only log if necessary to reduce console noise
-            // console.log(`✅ User joined room: ${userId}`);
+            // console.log(`✅ User joined room: ${userId}`); // Reduced logging
             socket.emit("connected");
         }
     } catch (err) {
@@ -91,22 +91,44 @@ io.on("connection", (socket) => {
     }
   });
 
-  // --- C. Real-time Message Forwarding (Optimized) ---
+  // --- C. Real-time Message Forwarding (CRITICAL FIX) ---
   socket.on("new_message", (newMessageReceived) => {
     const receiverId = getSafeId(newMessageReceived.receiver);
     
-    if (!receiverId) return console.log("Receiver not defined");
+    if (!receiverId) {
+        console.error("Error: Receiver ID not found for new message.");
+        return;
+    }
 
-    // 1. FAST EMIT: Send to client IMMEDIATELY (Don't wait for DB)
-    socket.in(receiverId).emit("message_received", newMessageReceived);
+    // Ensure sender is a full object for receiver
+    // This is vital to prevent "Invalid Date" or missing user info on the receiver's side.
+    // The frontend's 'handleSendMessage' already tries to pass the full sender 'user' object.
+    // This ensures that even if that fails, we have a fallback with essential info.
+    const senderInfo = newMessageReceived.sender && typeof newMessageReceived.sender === 'object'
+        ? newMessageReceived.sender // Use provided sender object
+        : { _id: getSafeId(newMessageReceived.sender), username: "Unknown Sender" }; // Fallback
+
+    // Ensure a valid timestamp
+    const messageTimestamp = newMessageReceived.createdAt || new Date().toISOString();
+
+    const completeMessagePayload = {
+        ...newMessageReceived,
+        sender: senderInfo,
+        receiver: { _id: receiverId }, // Ensure receiver is also an object with at least _id
+        createdAt: messageTimestamp,
+        // Add any other essential fields that might be missing
+    };
+
+    // 1. FAST EMIT: Send to client IMMEDIATELY
+    // Use the complete payload for the receiver.
+    socket.in(receiverId).emit("message_received", completeMessagePayload);
 
     // 2. BACKGROUND TASK: Save Notification asynchronously
-    // This prevents the chat from "hanging" while waiting for MongoDB
     (async () => {
         try {
             const notification = new Notification({
                 user: receiverId,
-                message: `New message from ${newMessageReceived.sender.username}`,
+                message: `New message from ${senderInfo.username}`,
                 type: 'message'
             });
             await notification.save();
@@ -121,15 +143,21 @@ io.on("connection", (socket) => {
     const receiverId = getSafeId(data.receiverId);
     if (!receiverId) return;
 
+    // Ensure the request data sent to receiver is complete
+    const requestPayload = data.request || {};
+    if (requestPayload.sender && typeof requestPayload.sender !== 'object') {
+        requestPayload.sender = { _id: getSafeId(requestPayload.sender), username: "Unknown" };
+    }
+
     // 1. Fast Emit
-    socket.in(receiverId).emit("friend_request_received", data.request);
+    socket.in(receiverId).emit("friend_request_received", requestPayload);
 
     // 2. Background Save
     (async () => {
         try {
             const notification = new Notification({
                 user: receiverId,
-                message: `New friend request from ${data.request.sender.username}`,
+                message: `New friend request from ${requestPayload.sender.username}`,
                 type: 'request'
             });
             await notification.save();
@@ -142,6 +170,7 @@ io.on("connection", (socket) => {
     const targetId = getSafeId(data.friendId);
     if (!targetId) return;
 
+    // Emit the userId of the person who was unfriended to the target
     socket.in(targetId).emit("friend_removed", data.userId);
 
     (async () => {
@@ -160,14 +189,20 @@ io.on("connection", (socket) => {
   socket.on("accept_friend_request", (data) => {
       const senderId = getSafeId(data.senderId);
       if (senderId) {
-          socket.in(senderId).emit("friend_request_accepted", data.user);
+          // Ensure the 'user' object sent is complete
+          const acceptedByUser = data.user || {};
+          if (!acceptedByUser._id) {
+              console.error("Error: User accepting request has no _id.");
+              return;
+          }
+          socket.in(senderId).emit("friend_request_accepted", acceptedByUser);
       }
   });
 
   // --- F. Disconnection (Cleanup) ---
   socket.on("disconnect", () => {
+    console.log("🔌 User Disconnected:", socket.id);
     // Optional: Add logic to mark user as 'offline' in DB if needed
-    // console.log("🔌 User Disconnected");
   });
 });
 
