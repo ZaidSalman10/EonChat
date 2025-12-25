@@ -4,6 +4,8 @@ const Otp = require('../models/Otp'); // Import the OTP model
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 require('dotenv').config();
 
 // --- 1. Email Transporter Setup (Nodemailer) ---
@@ -25,50 +27,42 @@ router.post('/send-otp', async (req, res) => {
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
-    // Check if email is already taken by another user
+    // Check if email is already taken
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already linked to an account" });
     }
 
-    // Generate a 6-digit numeric OTP
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Remove any existing OTPs for this email to prevent duplicates
+    // Save OTP
     await Otp.deleteMany({ email });
-
-    // Save new OTP to DB (TTL will auto-delete it after 5 mins)
     await new Otp({ email, otp }).save();
 
-    // Send Email
-    console.log("Email Sending...");
-
-    // Send Email asynchronously without blocking the response
-    transporter.sendMail({
-      from: '"EonChat Security" <no-reply@eonchat.com>',
-      to: email,
-      subject: 'Your EonChat Verification Code',
+    // Send email via Resend
+    const { data, error } = await resend.emails.send({
+      from: "EonChat <no-reply@eonchat.com>",
+      to: [email],
+      subject: "Your EonChat Verification Code",
       html: `
         <h3>Welcome to EonChat!</h3>
         <p>Your verification code is:</p>
         <h1 style="letter-spacing: 5px; color: #208c8c;">${otp}</h1>
         <p>This code expires in 5 minutes.</p>
-      `
-    })
-    .then(() => {
-      console.log(`✅ OTP email sent to ${email}`);
-    })
-    .catch(err => {
-      console.error(`⚠️ Failed to send OTP email to ${email}:`, err);
+      `,
     });
 
-    console.log("Email Dispatched...")
+    if (error) {
+      console.error("Resend email error:", error);
+      return res.status(500).json({ error: "Failed to send email" });
+    }
 
-    res.json({ message: "OTP sent successfully" });
+    res.json({ message: "OTP sent successfully", id: data.id });
 
   } catch (err) {
-    console.error("Email Error:", err);
-    res.status(500).json({ error: "Failed to send OTP. Check server logs." });
+    console.error("Send OTP error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
