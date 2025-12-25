@@ -9,18 +9,19 @@ require('dotenv').config();
 // 🚀 1. BREVO SMTP TRANSPORTER (NO DOMAIN REQUIRED)
 const transporter = nodemailer.createTransport({
   host: "smtp-relay.brevo.com",
-  port: 587,
-  secure: false, // MUST be false for Railway
+  port: 2525,                // Railway-friendly port
+  secure: false,             // STARTTLS (do not set true on 2525)
   auth: {
-    user: process.env.BREVO_SMTP_USER,
-    pass: process.env.BREVO_SMTP_PASS
+    user: process.env.BREVO_SMTP_USER,  // e.g., your Brevo SMTP login
+    pass: process.env.BREVO_SMTP_PASS   // e.g., your Brevo SMTP password
   },
   tls: {
-    rejectUnauthorized: false
+    rejectUnauthorized: false,           // Allow self-signed certs if needed
+    ciphers: "SSLv3"
   },
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 20000
+  connectionTimeout: 30000,  // 30 seconds
+  greetingTimeout: 30000,    // 30 seconds
+  socketTimeout: 30000       // 30 seconds
 });
 
 // 📩 2. SEND OTP ROUTE
