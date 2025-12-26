@@ -1,11 +1,11 @@
-// 3. app/chat/components/Sidebar.jsx (UPDATED - Fully Responsive)
+// 3. app/chat/components/Sidebar.jsx 
 "use client";
 
 import { 
   LogOut, Search, MessageSquare, Users, UserPlus, 
   Bell, Layers, Check, ChevronLeft, ChevronRight, 
   Info, MessageCircle, Trash2, ArrowUpCircle,
-  Compass, UserPlus2, Share2, ShieldCheck
+  Compass, UserPlus2, ShieldCheck
 } from "lucide-react";
 import { getSafeId } from '../utils/chatHelpers';
 
@@ -29,6 +29,7 @@ export default function Sidebar({
   setActiveChat, 
   isProcessing,
   handleMarkAsRead,
+  handleMarkAllAsRead, // <--- 1. NEW PROP RECEIVED HERE
   handlePopNotification,
   handleClearNotifications
 }) {
@@ -44,7 +45,7 @@ export default function Sidebar({
         ${isSidebarOpen ? "lg:w-80" : "lg:w-24"}`}
     >
       
-      {/* Sidebar Toggle - Desktop Only */}
+      {/* Sidebar Toggle */}
       <button 
         onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
         className="hidden lg:flex absolute -right-3 top-8 bg-[#208c8c] p-1.5 rounded-full text-black shadow-[0_0_15px_rgba(32,140,140,0.5)] z-50 hover:scale-110 transition-transform active:scale-95"
@@ -76,20 +77,25 @@ export default function Sidebar({
           <NavIcon icon={MessageSquare} active={activeTab==="chats"} onClick={()=>setActiveTab("chats")} title="Chats" />
           <NavIcon icon={Layers} active={activeTab==="requests"} onClick={()=>setActiveTab("requests")} title="Requests" />
           <NavIcon icon={Compass} active={activeTab==="discovery"} onClick={()=>setActiveTab("discovery")} title="Discovery" />
+          
+          {/* 🔥 2. UPDATED BELL ICON LOGIC */}
           <div className="relative">
               <NavIcon 
-                icon={Bell} active={activeTab === "notifications"} 
+                icon={Bell} 
+                active={activeTab==="notifications"} 
                 onClick={() => {
-                  setActiveTab("notifications"); 
-                  handleMarkAllAsRead();         
+                  setActiveTab("notifications"); // Switch Tab
+                  handleMarkAllAsRead();         // Instant Read Mark
                 }} 
                 title="Activity" 
               />
-              {/* The badge will disappear instantly because handleMarkAllAsRead updates the stack state */}
+              
+              {/* Red Dot (Will disappear instantly on click because handleMarkAllAsRead updates state immediately) */}
               {(!notifyStack?.isEmpty() && notifyStack?.items.some(n => !n.isRead)) && (
                   <span className="absolute top-2 right-2 w-2 h-2 bg-[#208c8c] rounded-full animate-ping"></span>
               )}
           </div>
+
           <NavIcon icon={UserPlus} active={activeTab==="friends"} onClick={()=>setActiveTab("friends")} title="Search" />
       </div>
 
