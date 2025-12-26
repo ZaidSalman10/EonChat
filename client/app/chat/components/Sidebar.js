@@ -29,7 +29,7 @@ export default function Sidebar({
   setActiveChat, 
   isProcessing,
   handleMarkAsRead,
-  handleMarkAllAsRead, // <--- 1. NEW PROP RECEIVED HERE
+  handleMarkAllAsRead, 
   handlePopNotification,
   handleClearNotifications
 }) {
@@ -37,6 +37,17 @@ export default function Sidebar({
   const textVisibility = isSidebarOpen 
     ? "opacity-100 w-auto ml-2 sm:ml-3 visible transition-all duration-300 delay-100" 
     : "opacity-0 w-0 ml-0 invisible overflow-hidden transition-all duration-200";
+
+  // --- 🔥 LOGIC UPDATE: Handle Mark-Read on Tab Exit ---
+  const handleTabSwitch = (newTab) => {
+    // If we are currently on 'notifications' and switching to a DIFFERENT tab,
+    // execute the mark-all-read logic.
+    if (activeTab === "notifications" && newTab !== "notifications") {
+        handleMarkAllAsRead();
+    }
+    // Perform the tab switch
+    setActiveTab(newTab);
+  };
 
   return (
     <aside 
@@ -72,31 +83,27 @@ export default function Sidebar({
           </div>
       </div>
 
-      {/* DSA Module Tabs */}
+      {/* DSA Module Tabs - USING NEW handleTabSwitch */}
       <div className="flex justify-around py-3 sm:py-4 bg-[#121e1e]/50 border-y border-[#333]/20 overflow-x-hidden">
-          <NavIcon icon={MessageSquare} active={activeTab==="chats"} onClick={()=>setActiveTab("chats")} title="Chats" />
-          <NavIcon icon={Layers} active={activeTab==="requests"} onClick={()=>setActiveTab("requests")} title="Requests" />
-          <NavIcon icon={Compass} active={activeTab==="discovery"} onClick={()=>setActiveTab("discovery")} title="Discovery" />
+          <NavIcon icon={MessageSquare} active={activeTab==="chats"} onClick={()=>handleTabSwitch("chats")} title="Chats" />
+          <NavIcon icon={Layers} active={activeTab==="requests"} onClick={()=>handleTabSwitch("requests")} title="Requests" />
+          <NavIcon icon={Compass} active={activeTab==="discovery"} onClick={()=>handleTabSwitch("discovery")} title="Discovery" />
           
-          {/* 🔥 2. UPDATED BELL ICON LOGIC */}
           <div className="relative">
               <NavIcon 
                 icon={Bell} 
                 active={activeTab==="notifications"} 
-                onClick={() => {
-                  setActiveTab("notifications"); // Switch Tab
-                  handleMarkAllAsRead();         // Instant Read Mark
-                }} 
+                onClick={() => handleTabSwitch("notifications")} 
                 title="Activity" 
               />
               
-              {/* Red Dot (Will disappear instantly on click because handleMarkAllAsRead updates state immediately) */}
+              {/* Red Dot Logic: Stays visible while viewing notifications, disappears when switching away */}
               {(!notifyStack?.isEmpty() && notifyStack?.items.some(n => !n.isRead)) && (
                   <span className="absolute top-2 right-2 w-2 h-2 bg-[#208c8c] rounded-full animate-ping"></span>
               )}
           </div>
 
-          <NavIcon icon={UserPlus} active={activeTab==="friends"} onClick={()=>setActiveTab("friends")} title="Search" />
+          <NavIcon icon={UserPlus} active={activeTab==="friends"} onClick={()=>handleTabSwitch("friends")} title="Search" />
       </div>
 
       {/* Main Scrollable Content */}
