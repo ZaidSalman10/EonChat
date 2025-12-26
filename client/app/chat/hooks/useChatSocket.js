@@ -18,8 +18,6 @@ export const useChatSocket = (
   useEffect(() => {
     if (!user) return;
 
-    // 1. Initialize Socket with Robust Configuration
-    // Added reconnection logic and timeout settings to prevent "zombie" connections
     socketRef.current = io(API_URL, { 
       transports: ["websocket", "polling"], 
       reconnectionAttempts: 5,
@@ -27,72 +25,73 @@ export const useChatSocket = (
       query: { userId: getSafeId(user) }    
     });
 
-    // 2. Setup Function (Extracted for reuse)
-    // This allows us to re-join the room if the internet drops and comes back
     const setupUserRoom = () => {
       if (socketRef.current && user) {
         socketRef.current.emit("setup", user);
       }
     };
 
-    // Initial Setup
     setupUserRoom();
 
-    // 🔥 CRITICAL FIX: Re-join room immediately upon reconnection
-    // This solves the issue where users stop receiving messages after a minor disconnect
     socketRef.current.on("connect", () => {
-      // console.log("Reconnected to server");
       setupUserRoom();
     });
 
-    // 3. Message Listener
+    // --- Message Listener with Stack Accuracy ---
     socketRef.current.on("message_received", (newMessage) => {
       const currentChatId = getSafeId(activeChatRef.current);
       const senderId = getSafeId(newMessage.sender);
+      const receiverId = getSafeId(newMessage.receiver);
+      const myId = getSafeId(user);
 
-      // Check if the message is from the currently active chat
+      // ACCURACY CHECK: Ensure message is actually for me
+      if (receiverId && receiverId !== myId) return;
+
       if (currentChatId === senderId) {
-          
+          // If Chat is Open: Update Messages
           setMessages((prev) => {
-              // Safety check if prev is not an array
               const currentMessages = Array.isArray(prev) ? prev : [];
-              
-              // Deduplication Shield: Prevent duplicate messages
-              // This is crucial for the "Optimistic UI" to work without double-rendering
               if (currentMessages.some(m => m._id === newMessage._id)) return currentMessages;
-              
               return [...currentMessages, newMessage];
           });
-
       } else {
-          // If chat is not open, push to notification stack
+          // If Chat is Closed: Push to Notification Stack
           setNotifyStack(prev => {
             const updated = new NotificationStack(prev.items);
             
-            // Optional: Deduplicate notifications (prevent spamming the same alert)
-            if (updated.items.some(n => n.message.includes(newMessage.sender.username) && n.timestamp > Date.now() - 2000)) {
-                return updated;
-            }
+            // STRICT DEDUPLICATION:
+            // Check if we received a notification from this sender in the last 2 seconds.
+            // This prevents duplicate alerts for the same event due to network retries.
+            const isDuplicate = updated.items.some(n => 
+                n.message.includes(newMessage.sender.username) && 
+                (new Date(n.timestamp).getTime() > Date.now() - 2000)
+            );
+
+            if (isDuplicate) return prev; // Return original state, do not add
 
             updated.push({ 
-                _id: Date.now().toString(), 
+                _id: newMessage._id || Date.now().toString(), 
                 message: `New message from ${newMessage.sender.username}`, 
                 type: 'message', 
                 isRead: false, 
-                timestamp: new Date() 
+                timestamp: new Date().toISOString() 
             });
             return updated;
           });
       }
     });
 
-    // 4. Friend Request Listener
     socketRef.current.on("friend_request_received", (newRequest) => {
+      // Stack Push Logic
       setRequestStack(prev => {
         const updated = new RequestStack(prev.items);
+        // Deduplicate Requests
+        if (updated.items.some(r => r._id === newRequest._id)) return prev;
         updated.push(newRequest); 
         return updated;
       });
+
+      // Notification Push Logic
       setNotifyStack(prev => {
         const updated = new NotificationStack(prev.items);
         updated.push({ 
@@ -100,13 +99,12 @@ export const useChatSocket = (
             message: `New friend request from ${newRequest.sender.username}`, 
             type: 'request', 
             isRead: false, 
-            timestamp: new Date() 
+            timestamp: new Date().toISOString() 
         });
         return updated;
       });
     });
 
-    // 5. Request Accepted Listener (Real-time Graph Update)
     socketRef.current.on("friend_request_accepted", (newFriend) => {
         setFriends(prev => [...prev, newFriend]);
         
@@ -117,7 +115,7 @@ export const useChatSocket = (
                 message: `${newFriend.username} accepted your friend request`, 
                 type: 'alert', 
                 isRead: false, 
-                timestamp: new Date() 
+                timestamp: new Date().toISOString() 
             });
             return updated;
         });
@@ -125,24 +123,20 @@ export const useChatSocket = (
         if (typeof buildGraph === "function") buildGraph();
     });
 
-    // 6. Unfriend Listener
     socketRef.current.on("friend_removed", (id) => {
         setFriends(prev => prev.filter(f => getSafeId(f) !== id));
-        
         if (getSafeId(activeChatRef.current) === id) {
             setActiveChat(null);
             alert("This user has unfriended you.");
         }
-        
         if (typeof buildGraph === "function") buildGraph();
     });
 
-    // Cleanup on unmount
     return () => {
         if (socketRef.current) socketRef.current.disconnect();
     };
 
-  }, [user]); // Removed 'buildGraph' to prevent infinite re-render loops
+  }, [user]); 
 
   return socketRef;
 };

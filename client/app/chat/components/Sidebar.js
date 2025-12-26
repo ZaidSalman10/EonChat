@@ -38,14 +38,12 @@ export default function Sidebar({
     ? "opacity-100 w-auto ml-2 sm:ml-3 visible transition-all duration-300 delay-100" 
     : "opacity-0 w-0 ml-0 invisible overflow-hidden transition-all duration-200";
 
-  // --- 🔥 LOGIC UPDATE: Handle Mark-Read on Tab Exit ---
+  // --- 🔥 ACCURATE TAB SWITCH LOGIC ---
+  // Marks as read only when LEAVING the 'notifications' tab
   const handleTabSwitch = (newTab) => {
-    // If we are currently on 'notifications' and switching to a DIFFERENT tab,
-    // execute the mark-all-read logic.
     if (activeTab === "notifications" && newTab !== "notifications") {
         handleMarkAllAsRead();
     }
-    // Perform the tab switch
     setActiveTab(newTab);
   };
 
@@ -83,7 +81,7 @@ export default function Sidebar({
           </div>
       </div>
 
-      {/* DSA Module Tabs - USING NEW handleTabSwitch */}
+      {/* DSA Module Tabs */}
       <div className="flex justify-around py-3 sm:py-4 bg-[#121e1e]/50 border-y border-[#333]/20 overflow-x-hidden">
           <NavIcon icon={MessageSquare} active={activeTab==="chats"} onClick={()=>handleTabSwitch("chats")} title="Chats" />
           <NavIcon icon={Layers} active={activeTab==="requests"} onClick={()=>handleTabSwitch("requests")} title="Requests" />
@@ -97,7 +95,7 @@ export default function Sidebar({
                 title="Activity" 
               />
               
-              {/* Red Dot Logic: Stays visible while viewing notifications, disappears when switching away */}
+              {/* Accurate Stack Count Indicator */}
               {(!notifyStack?.isEmpty() && notifyStack?.items.some(n => !n.isRead)) && (
                   <span className="absolute top-2 right-2 w-2 h-2 bg-[#208c8c] rounded-full animate-ping"></span>
               )}
@@ -106,12 +104,12 @@ export default function Sidebar({
           <NavIcon icon={UserPlus} active={activeTab==="friends"} onClick={()=>handleTabSwitch("friends")} title="Search" />
       </div>
 
-      {/* Main Scrollable Content */}
+      {/* Main Content */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 custom-scrollbar space-y-2">
           
-          {/* DISCOVERY */}
+          {/* ... (Discovery and Request sections remain unchanged) ... */}
           {activeTab === "discovery" && recommendations?.map((rec, idx) => (
-            <div key={getSafeId(rec) || `rec-${idx}`} className="flex items-center p-2.5 sm:p-3 rounded-xl bg-[#1d2d2d]/30 border border-transparent hover:border-[#208c8c]/30 transition-all group overflow-hidden whitespace-nowrap">
+             <div key={getSafeId(rec) || `rec-${idx}`} className="flex items-center p-2.5 sm:p-3 rounded-xl bg-[#1d2d2d]/30 border border-transparent hover:border-[#208c8c]/30 transition-all group overflow-hidden whitespace-nowrap">
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gray-800 flex items-center justify-center shrink-0 text-[#cae9ea] font-bold text-sm sm:text-base">
                     {rec.username?.[0]?.toUpperCase()}
                 </div>
@@ -127,7 +125,6 @@ export default function Sidebar({
             </div>
           ))}
 
-          {/* REQUESTS */}
           {activeTab === "requests" && requestStack.getStackView().map((req, index) => (
               <div key={getSafeId(req) || `req-${index}`} className="flex flex-col p-2.5 sm:p-3 rounded-xl bg-[#1d2d2d] border border-[#333] overflow-hidden whitespace-nowrap relative">
                   <div className="flex items-center">
@@ -150,24 +147,30 @@ export default function Sidebar({
               </div>
           ))}
 
-          {/* NOTIFICATIONS */}
+          {/* NOTIFICATIONS - Accurate LIFO Display */}
           {activeTab === "notifications" && (
             <div className="animate-fade-in space-y-2">
                 {isSidebarOpen && (
                     <div className="flex items-center justify-between px-1 mb-3 sm:mb-4">
                         <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Activity Log</p>
                         <div className="flex gap-1.5 sm:gap-2">
-                            <button onClick={handlePopNotification} title="Pop Top" className="text-gray-500 hover:text-[#208c8c] transition">
+                            <button onClick={handlePopNotification} title="Pop Top (LIFO)" className="text-gray-500 hover:text-[#208c8c] transition">
                               <ArrowUpCircle size={16} className="sm:w-[18px] sm:h-[18px]"/>
                             </button>
-                            <button onClick={handleClearNotifications} title="Clear" className="text-gray-500 hover:text-red-400 transition">
+                            <button onClick={handleClearNotifications} title="Clear All" className="text-gray-500 hover:text-red-400 transition">
                               <Trash2 size={16} className="sm:w-[18px] sm:h-[18px]"/>
                             </button>
                         </div>
                     </div>
                 )}
+                {/* getStackView returns reversed array (Newest First) */}
                 {notifyStack.getStackView().map((note, idx) => (
-                    <div key={getSafeId(note) || `note-${idx}`} onClick={() => !note.isRead && handleMarkAsRead(note._id)} className={`flex items-center p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer overflow-hidden whitespace-nowrap ${note.isRead ? "opacity-30 grayscale" : "bg-[#1d2d2d] border-[#208c8c]/20 shadow-md"}`}>
+                    <div 
+                        key={getSafeId(note) || `note-${idx}`} 
+                        onClick={() => !note.isRead && handleMarkAsRead(note._id)} 
+                        className={`flex items-center p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer overflow-hidden whitespace-nowrap 
+                        ${note.isRead ? "opacity-30 grayscale" : "bg-[#1d2d2d] border-[#208c8c]/20 shadow-md"}`}
+                    >
                         <div className="shrink-0">
                             {note.type === "message" ? <MessageCircle size={16} className="text-[#208c8c] sm:w-[18px] sm:h-[18px]" /> : <Info size={16} className="text-red-400 sm:w-[18px] sm:h-[18px]" />}
                         </div>
@@ -180,8 +183,8 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* CHATS */}
-          {activeTab === "chats" && friends?.map((friend, idx) => (
+          {/* ... (Chats and Search remain unchanged) ... */}
+           {activeTab === "chats" && friends?.map((friend, idx) => (
               <div 
                 key={getSafeId(friend) || `friend-${idx}`} 
                 onClick={() => setActiveChat(friend)} 
@@ -201,7 +204,6 @@ export default function Sidebar({
               </div>
           ))}
 
-          {/* SEARCH PEOPLE */}
           {activeTab === "friends" && (
               <div className="space-y-3 sm:space-y-4">
                   <div className="px-1">
@@ -237,7 +239,6 @@ export default function Sidebar({
               </div>
           )}
 
-          {/* Empty States */}
           {friends.length === 0 && activeTab === "chats" && (
             <div className="flex flex-col items-center justify-center mt-10 opacity-20">
                 <Users size={28} className="sm:w-8 sm:h-8" />

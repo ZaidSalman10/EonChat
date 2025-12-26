@@ -24,16 +24,16 @@ export const getSafeId = (data) => {
   return null;
 };
 
-
 // --- NOTIFICATION STACK IMPLEMENTATION ---
-
 export class NotificationStack {
   constructor(initialItems = []) {
     this.items = [...initialItems];
   }
+  // Adds to the END (Top of Stack in logical memory)
   push(element) { this.items.push(element); }
+  // Removes from the END (LIFO)
   pop() { return this.items.pop(); }
   isEmpty() { return this.items.length === 0; }
+  // Returns reversed copy for UI (Newest on Top)
   getStackView() { return [...this.items].reverse(); }
 }
-

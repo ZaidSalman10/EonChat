@@ -1,23 +1,25 @@
+// routes/notifications.js
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Notification = require('../models/Notification');
 
 // @route   GET api/notifications
-// @desc    Get all notifications (Sorted by newest first for Stack behavior)
+// @desc    Get all notifications (Sorted by Oldest First for correct Stack construction)
 router.get('/', auth, async (req, res) => {
   try {
-    // timestamp: -1 puts the newest notifications at the "top"
-    const notes = await Notification.find({ user: req.user.id }).sort({ timestamp: -1 });
+    // CRITICAL FIX: Sort by 1 (Ascending). 
+    // Frontend Stack pushes to the end. DB must feed [Oldest...Newest].
+    // The frontend's getStackView() reverses it for display.
+    const notes = await Notification.find({ user: req.user.id }).sort({ timestamp: 1 });
     res.json(notes);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
 // @route   PATCH api/notifications/mark-all-read
-// @desc    Mark ALL notifications as read (Triggered by clicking Bell)
+// @desc    Mark ALL notifications as read
 router.patch('/mark-all-read', auth, async (req, res) => {
   try {
-    // Efficiently update all documents for this user where isRead is false
     await Notification.updateMany(
       { user: req.user.id, isRead: false }, 
       { $set: { isRead: true } }
@@ -44,6 +46,7 @@ router.patch('/read/:id', auth, async (req, res) => {
 // @desc    DSA POP: Delete the most recent notification (LIFO)
 router.delete('/pop', auth, async (req, res) => {
   try {
+    // Find the NEWEST notification (Top of stack) and remove it
     const latest = await Notification.findOne({ user: req.user.id }).sort({ timestamp: -1 });
     if (latest) await latest.deleteOne();
     res.json({ msg: "Popped from stack" });
