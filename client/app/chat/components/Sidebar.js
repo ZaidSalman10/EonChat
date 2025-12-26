@@ -1,6 +1,4 @@
-// ============================================
 // 3. app/chat/components/Sidebar.jsx (UPDATED - Fully Responsive)
-// ============================================
 "use client";
 
 import { 
@@ -79,7 +77,15 @@ export default function Sidebar({
           <NavIcon icon={Layers} active={activeTab==="requests"} onClick={()=>setActiveTab("requests")} title="Requests" />
           <NavIcon icon={Compass} active={activeTab==="discovery"} onClick={()=>setActiveTab("discovery")} title="Discovery" />
           <div className="relative">
-              <NavIcon icon={Bell} active={activeTab==="notifications"} onClick={()=>setActiveTab("notifications")} title="Activity" />
+              <NavIcon 
+                icon={Bell} active={activeTab === "notifications"} 
+                onClick={() => {
+                  setActiveTab("notifications"); 
+                  handleMarkAllAsRead();         
+                }} 
+                title="Activity" 
+              />
+              {/* The badge will disappear instantly because handleMarkAllAsRead updates the stack state */}
               {(!notifyStack?.isEmpty() && notifyStack?.items.some(n => !n.isRead)) && (
                   <span className="absolute top-2 right-2 w-2 h-2 bg-[#208c8c] rounded-full animate-ping"></span>
               )}

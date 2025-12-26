@@ -14,6 +14,7 @@ import EonBot from './components/EonBot';
 export default function ChatPage() {
   const router = useRouter();
   
+  // --- State ---
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [activeChat, setActiveChat] = useState(null); 
@@ -35,6 +36,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
 
+  // --- Helpers ---
   const buildGraphRecommendations = async () => {
     if (!token || !user) return;
     try {
@@ -55,6 +57,7 @@ export default function ChatPage() {
     } catch (err) { console.error("Graph Traversal Failed", err); }
   };
 
+  // --- Initial Setup ---
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
@@ -68,6 +71,7 @@ export default function ChatPage() {
 
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
 
+  // --- Socket Hook ---
   const socketRef = useChatSocket(
     user, 
     activeChatRef, 
@@ -79,6 +83,7 @@ export default function ChatPage() {
     buildGraphRecommendations 
   );
 
+  // --- Data Fetching ---
   const fetchFriends = async () => {
     try {
       const res = await fetch(`${API_URL}/api/users/friends`, { headers: { "x-auth-token": token } });
@@ -135,7 +140,7 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // --- 🔥 UPDATED SEND MESSAGE HANDLER ---
+  // --- 🔥 SEND MESSAGE HANDLER (Optimized & Robust) ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -143,16 +148,16 @@ export default function ChatPage() {
     const content = inputText;
     const receiverId = getSafeId(activeChat);
     const tempId = `temp-${Date.now()}`;
-    const timestamp = new Date().toISOString(); // ISO Format is safest
+    const timestamp = new Date().toISOString(); 
 
     // 1. Optimistic Message (Instant Show)
     const optimisticMsg = {
         _id: tempId,
         content: content,
-        sender: user, // Pass full user object
+        sender: user, 
         receiver: activeChat,
-        createdAt: timestamp, // DB uses createdAt
-        timestamp: timestamp, // UI uses timestamp (we set both to be safe)
+        createdAt: timestamp, 
+        timestamp: timestamp, 
         status: "sending"
     };
 
@@ -169,31 +174,33 @@ export default function ChatPage() {
       const data = await res.json();
       
       if (res.status === 403) {
-        // Handle blocked/unfriended logic...
+        alert(data.msg || "Message failed.");
         setMessages(prev => prev.filter(m => m._id !== tempId));
         return;
       }
 
-      // 3. Construct Socket Payload (Fixes the "Invalid Date" for Receiver)
+      // 3. Construct Safe Socket Payload
       const socketPayload = {
           ...data,
           sender: user, // Force full sender object
-          createdAt: data.createdAt || timestamp, // Fallback
-          timestamp: data.createdAt || timestamp // Fallback
+          createdAt: data.createdAt || timestamp, 
+          timestamp: data.createdAt || timestamp 
       };
 
-      // 4. Emit
+      // 4. Emit to Socket
       if (socketRef.current) socketRef.current.emit("new_message", socketPayload);
       
-      // 5. Update Local ID
+      // 5. Update Local State (Replace Temp ID)
       setMessages((prev) => prev.map(msg => (msg._id === tempId ? socketPayload : msg)));
 
     } catch (err) { 
         console.error("Send Error", err);
         setMessages(prev => prev.filter(m => m._id !== tempId));
-        setInputText(content);
+        setInputText(content); // Restore text
     }
   };
+
+  // --- Handlers ---
 
   const handleUserSearch = async (term) => {
     setUserSearchTerm(term);
@@ -278,6 +285,26 @@ export default function ChatPage() {
     await fetch(`${API_URL}/api/notifications/read/${id}`, { method: 'PATCH', headers: { "x-auth-token": token } });
   };
 
+  // --- 🔥 NEW: MARK ALL AS READ HANDLER ---
+  const handleMarkAllAsRead = async () => {
+    // 1. Guard Clause: Skip if empty or already all read
+    if (notifyStack.isEmpty() || !notifyStack.items.some(n => !n.isRead)) return;
+
+    // 2. Optimistic UI Update (Instant)
+    setNotifyStack(prev => {
+      const updatedItems = prev.items.map(n => ({ ...n, isRead: true }));
+      return new NotificationStack(updatedItems);
+    });
+
+    // 3. API Call
+    try {
+      await fetch(`${API_URL}/api/notifications/mark-all-read`, { 
+        method: 'PATCH', 
+        headers: { "x-auth-token": token } 
+      });
+    } catch (err) { console.error("Mark All Read Error", err); }
+  };
+
   const handlePopNotification = async () => {
     if (notifyStack.isEmpty()) return;
     const res = await fetch(`${API_URL}/api/notifications/pop`, { method: 'DELETE', headers: { "x-auth-token": token } });
@@ -309,8 +336,12 @@ export default function ChatPage() {
         userSearchResults={userSearchResults} userSearchTerm={userSearchTerm}
         handleUserSearch={handleUserSearch} handleSendRequest={handleSendRequest}
         handleAcceptRequest={handleAcceptRequest} handleLogout={handleLogout}
-        handleMarkAsRead={handleMarkAsRead} handlePopNotification={handlePopNotification}
+        
+        handleMarkAsRead={handleMarkAsRead} 
+        handleMarkAllAsRead={handleMarkAllAsRead} // Pass the new handler
+        handlePopNotification={handlePopNotification}
         handleClearNotifications={handleClearNotifications}
+        
         activeChat={activeChat} setActiveChat={setActiveChat} isProcessing={isProcessing}
       />
       <ChatWindow 
